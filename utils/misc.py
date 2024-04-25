@@ -5,7 +5,7 @@ import yaml
 import torch
 
 
-def seed_everything(seed: int = 42):
+def seed_everything(seed: int = 919):
     random.seed(seed)
     np.random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
