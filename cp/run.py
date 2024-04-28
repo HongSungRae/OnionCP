@@ -43,7 +43,7 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
     assert (imsize >= 256) and (imsize%(2**4) == 0)
     if cp_type == 'onionCP':
         self_mix = True
-    misc.seed_everything()
+    misc.seed_everything(7087)
 
     # make save path
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -54,7 +54,7 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
     dataset_path = misc.open_yaml(fr'{path}/configuration.yaml')[dataset]
 
     # synthesize new samples
-    count = 1
+    count = 1399
     inception = None
     fid = None
     with tqdm(total=n_samples) as pbar:
@@ -96,11 +96,11 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
                     target_image = cv2.resize(target_image, (imsize,imsize))
 
                     # select paste objects
-                    max_objs = {'kumar':20, 'cpm17':20, 'glas2015':6}[dataset]
+                    max_objs = {'kumar':60, 'cpm17':40, 'glas2015':6}[dataset]
                     num_objects = min(random.randint(1, int((len(np.unique(source_mask))-1)/2)) * 2, max_objs)
                     selected_objects = random.sample(np.unique(source_mask).tolist()[1:], num_objects)
+                    mask = np.where(cv2.resize(source_mask.astype(np.float64), (imsize,imsize))>0, 1, 0)
                     source_mask = np.where(np.isin(source_mask, selected_objects), source_mask, 0)
-                    mask = np.where(source_mask>0, 1, 0)
                     image = copy.deepcopy(target_image)
                     changed_mask = np.zeros((imsize,imsize))
                     
@@ -112,7 +112,7 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
 
                     # check area size similarity and do CP
                     completed = False
-                    for i in tqdm(range(int(len(area_dict_items)/2))):
+                    for i in tqdm(range(int(len(area_dict_items)/2)), desc=f' Generating {count}th sample...'):
                         object_1_key, object_1_area = area_dict_items[i]
                         object_2_key, object_2_area = area_dict_items[i+1]
                         if object_2_area * 1.2 >= object_1_area:
@@ -121,12 +121,12 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
                             mask_1 = np.where(cv2.resize(mask_1.astype(np.float32),(imsize,imsize))>0, 1, 0)
                             mask_2 = np.where(source_mask==object_2_key, 1, 0)
                             mask_2 = np.where(cv2.resize(mask_2.astype(np.float32),(imsize,imsize))>0, 1, 0)
-                            synthesized_image_1, slim_mask_1 = onion_cp(source_image, target_image, mask_1, mask_2, dataset)
-                            synthesized_image_2, slim_mask_2 = onion_cp(source_image, target_image, mask_2, mask_1, dataset)
+                            synthesized_image_1, slim_mask_1, original_mask_1 = onion_cp(source_image, target_image, mask_1, mask_2, dataset)
+                            synthesized_image_2, slim_mask_2, original_mask_2 = onion_cp(source_image, target_image, mask_2, mask_1, dataset)
                             image = image*(1-slim_mask_1[...,None]) + synthesized_image_1*slim_mask_1[...,None]
                             image = image*(1-slim_mask_2[...,None]) + synthesized_image_2*slim_mask_2[...,None]
-                            changed_mask += slim_mask_1.astype(np.uint8)
-                            changed_mask += slim_mask_2.astype(np.uint8)
+                            changed_mask += original_mask_1.astype(np.uint8)
+                            changed_mask += original_mask_2.astype(np.uint8)
                     image = image.astype(np.uint8)
                     cv2.imwrite(fr'{path}/synthesized/{dataset}/{cp_type}/{count}_changed.png', changed_mask*255)
 
@@ -155,14 +155,16 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
                         image, mask = tumor_cp(source_image, target_image, source_mask, target_mask)
 
                 # save
+                if dataset == 'kumar':
+                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 mask = mask * 255
                 cv2.imwrite(fr'{path}/synthesized/{dataset}/{cp_type}/{count}.png', image)
                 cv2.imwrite(fr'{path}/synthesized/{dataset}/{cp_type}/{count}_mask.png', mask)
 
                 # metric
-                image_torch = torch.einsum('bhwc -> bchw', torch.from_numpy(image[None,...]).to(dtype=torch.uint8))
-                fid = metric.get_fid(None, image_torch, fid)
-                inception = metric.get_is(image_torch, inception)
+                # image_torch = torch.einsum('bhwc -> bchw', torch.from_numpy(image[None,...]).to(dtype=torch.uint8))
+                # fid = metric.get_fid(None, image_torch, fid)
+                # inception = metric.get_is(image_torch, inception)
                 
                 # process bar
                 count += 1
@@ -175,16 +177,16 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
 
     
     # metric
-    for image_name in image_list:
-        if dataset == 'glas2015':
-            image = cv2.imread(fr'{dataset_path}/{image_name}', cv2.IMREAD_COLOR)
-        elif dataset == 'kumar':
-            image = tifffile.imread(fr'{dataset_path}/train/Images/{image_name}')
-        elif dataset == 'cpm17':
-            image = cv2.imread(fr'{dataset_path}/train/Images/{image_name}', cv2.IMREAD_COLOR)
-        image = cv2.resize(image, (imsize,imsize))
-        image_torch = torch.einsum('bhwc -> bchw', torch.from_numpy(image[None,...]).to(dtype=torch.uint8))
-        fid = metric.get_fid(image_torch, None, fid)
+    # for image_name in image_list:
+    #     if dataset == 'glas2015':
+    #         image = cv2.imread(fr'{dataset_path}/{image_name}', cv2.IMREAD_COLOR)
+    #     elif dataset == 'kumar':
+    #         image = tifffile.imread(fr'{dataset_path}/train/Images/{image_name}')
+    #     elif dataset == 'cpm17':
+    #         image = cv2.imread(fr'{dataset_path}/train/Images/{image_name}', cv2.IMREAD_COLOR)
+    #     image = cv2.resize(image, (imsize,imsize))
+    #     image_torch = torch.einsum('bhwc -> bchw', torch.from_numpy(image[None,...]).to(dtype=torch.uint8))
+    #     fid = metric.get_fid(image_torch, None, fid)
 
     # save configuration
     configuration = {'cp_type':cp_type, 'n_samples':n_samples, 'dataset':dataset, 'imsize':imsize, 'self_mix':self_mix, 'fid':fid.compute().item(), 'is':inception.compute()[0].item()}
@@ -198,16 +200,16 @@ if __name__ == '__main__':
     # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='glas2015')
     # run(cp_type='inpaintingCP', n_samples=5000, imsize=512, dataset='glas2015')
     # run(cp_type='tumorCP', n_samples=5000, imsize=512, dataset='glas2015')
-    # run(cp_type='onionCP', n_samples=50, imsize=512, dataset='glas2015')
+    # run(cp_type='onionCP', n_samples=50, imsize=256, dataset='glas2015')
 
     # run(cp_type='cp', n_samples=5000, imsize=512, dataset='kumar')
     # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='kumar')
     # run(cp_type='inpaintingCP', n_samples=5000, imsize=512, dataset='kumar')
     # run(cp_type='tumorCP', n_samples=5000, imsize=512, dataset='kumar')
-    run(cp_type='onionCP', n_samples=5, imsize=512, dataset='kumar')
+    # run(cp_type='onionCP', n_samples=10, imsize=512, dataset='kumar')
 
     # run(cp_type='cp', n_samples=5000, imsize=512, dataset='cpm17')
     # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='cpm17')
     # run(cp_type='inpaintingCP', n_samples=5000, imsize=512, dataset='cpm17')
     # run(cp_type='tumorCP', n_samples=5000, imsize=512, dataset='cpm17')
-    # run(cp_type='onionCP', n_samples=5, imsize=512, dataset='cpm17')
+    run(cp_type='onionCP', n_samples=5000, imsize=512, dataset='cpm17')

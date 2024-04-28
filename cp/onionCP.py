@@ -6,6 +6,7 @@ from scipy.ndimage import label
 from collections import Counter
 from skimage.filters import gaussian
 import time
+from tqdm import tqdm
 
 
 def onion_cp(img_source, img_target, mask_source, mask_target, dataset):
@@ -33,9 +34,13 @@ def onion_cp(img_source, img_target, mask_source, mask_target, dataset):
     # 1. peeling onion
     edges_source, onions_source = onion_peeling(mask_source.astype(np.uint8), prune_all=False)
     edges_target, onions_target = onion_peeling(mask_target.astype(np.uint8), prune_all=False)
-    if dataset in ['kumar', 'cpm17']: # kumar and cpm17 are too chbby
-        edges_source, onions_source = edges_source[2:], onions_source[2:]
-        edges_target, onions_target = edges_target[2:], onions_target[2:]
+    return_mask = onions_target[0]
+    if dataset in ['kumar']: # kumar and cpm17 are too chbby
+        edges_source, onions_source = edges_source[1:], onions_source[1:]
+        edges_target, onions_target = edges_target[1:], onions_target[1:]
+    elif dataset in ['cpm17']:
+        edges_source, onions_source = edges_source[1:], onions_source[1:]
+        edges_target, onions_target = edges_target[1:], onions_target[1:]
 
     # 2. resize source to fit target's objet size
     img_source_resized, mask_source_resized, edges_source_resized, onions_source_resized, imsize_source = resize_and_onion_peeling(img_source,
@@ -104,7 +109,6 @@ def onion_cp(img_source, img_target, mask_source, mask_target, dataset):
 
     
     # 5. From second to last edge
-    start = time.time()
     T_i_minus_1 = copy.deepcopy(T_1)
     edge_source_i_minus_1 = edges_source_resized[0]
     edge_target_i_minus_1 = edges_target[0]
@@ -112,7 +116,7 @@ def onion_cp(img_source, img_target, mask_source, mask_target, dataset):
     h_max_t, w_max_t = imsize, imsize
     h_max_s, w_max_s = imsize_source, imsize_source
 
-    for edge_idx in range(1,len(edges_source_resized)):
+    for edge_idx in tqdm(range(1,len(edges_source_resized)), desc='from second edge...'):
         edge_source = edges_source_resized[edge_idx]
         edge_target = edges_target[edge_idx]
 
@@ -198,7 +202,7 @@ def onion_cp(img_source, img_target, mask_source, mask_target, dataset):
         edge_source_i_minus_1 = edges_source_resized[edge_idx]
         edge_target_i_minus_1 = edges_target[edge_idx]
 
-    return new, gaussian(onions_target[0], 0.4)
+    return new, gaussian(onions_target[0], 0.2), return_mask #gaussian(onions_target[0], 0.2)
 
 
 def onion_peeling(selected_object, prune_all=False, stop_iter=-1):
