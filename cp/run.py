@@ -43,7 +43,7 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
     assert (imsize >= 256) and (imsize%(2**4) == 0)
     if cp_type == 'onionCP':
         self_mix = True
-    misc.seed_everything(7087)
+    misc.seed_everything(701870)
 
     # make save path
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -54,7 +54,7 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
     dataset_path = misc.open_yaml(fr'{path}/configuration.yaml')[dataset]
 
     # synthesize new samples
-    count = 1399
+    count = 1525
     inception = None
     fid = None
     with tqdm(total=n_samples) as pbar:
@@ -165,7 +165,7 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
                 # image_torch = torch.einsum('bhwc -> bchw', torch.from_numpy(image[None,...]).to(dtype=torch.uint8))
                 # fid = metric.get_fid(None, image_torch, fid)
                 # inception = metric.get_is(image_torch, inception)
-                
+            
                 # process bar
                 count += 1
                 pbar.update(1)
@@ -206,7 +206,8 @@ if __name__ == '__main__':
     # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='kumar')
     # run(cp_type='inpaintingCP', n_samples=5000, imsize=512, dataset='kumar')
     # run(cp_type='tumorCP', n_samples=5000, imsize=512, dataset='kumar')
-    # run(cp_type='onionCP', n_samples=10, imsize=512, dataset='kumar')
+    # print('kumar')
+    # run(cp_type='onionCP', n_samples=5000, imsize=512, dataset='kumar')
 
     # run(cp_type='cp', n_samples=5000, imsize=512, dataset='cpm17')
     # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='cpm17')

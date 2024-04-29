@@ -1,3 +1,4 @@
+# library
 import numpy as np
 import cv2
 import copy
@@ -7,6 +8,10 @@ from collections import Counter
 from skimage.filters import gaussian
 import time
 from tqdm import tqdm
+
+
+# local
+from utils import misc
 
 
 def onion_cp(img_source, img_target, mask_source, mask_target, dataset):
@@ -193,9 +198,9 @@ def onion_cp(img_source, img_target, mask_source, mask_target, dataset):
                 if len(s_represent) >= 1:
                     T_i[key]['S_represent'] = s_represent
                     no_represent_key_list.remove(item)
-            
+
             if time.time() - start > 60:
-                raise ValueError("no represent key error")
+                raise TimeoutError('Timeout by key allocation')
 
         # variables for next step
         T_i_minus_1 = T_i
@@ -242,9 +247,13 @@ def onion_peeling(selected_object, prune_all=False, stop_iter=-1):
         
         # make onion      
         onions.append(onions[-1] - edge)
+
+        # break
         if np.sum(onions[-1]) == 0:
             break
-        if stop_iter == i:
+        elif np.sum(onions[-1]) < 0:
+            raise ValueError('Onion peeling error')
+        elif stop_iter == i:
             break
     
     return edges, onions
@@ -261,6 +270,7 @@ def resize_and_onion_peeling(image_source, edges_source, edges_target, selected_
     # set image ratio
     ratio = len(edges_target)/len(edges_source)
     imsize_source = int(imsize * ratio)
+    imsize_source_list = [copy.deepcopy(imsize_source)]
 
     # image resize
     image_source_resized = cv2.resize(image_source, (imsize_source, imsize_source))
@@ -282,7 +292,12 @@ def resize_and_onion_peeling(image_source, edges_source, edges_target, selected_
             image_source_resized = cv2.resize(image_source, (imsize_source, imsize_source))
             selected_source_resized = cv2.resize(selected_source.astype(np.float32), (imsize_source, imsize_source))
             selected_source_resized = np.where(selected_source_resized>0,1.0,0)
-    
+
+        if imsize_source not in imsize_source_list:
+            imsize_source_list.append(imsize_source)
+        else:
+            raise ValueError('Resize source error')
+
     return image_source_resized, selected_source_resized, edges_source_resized, onions_source_resized, imsize_source
 
 
@@ -300,11 +315,14 @@ def prune_edge(edge_mask):
     '''
     neighbor_filter = np.array([[1, 1, 1], [1, -8, 1], [1, 1, 1]])
     pruned_edge = copy.deepcopy(edge_mask)
+    start = time.time()
     while True:
         sum_edge = np.sum(pruned_edge)
         pruned_edge -= np.where(cv2.filter2D(pruned_edge,-1,neighbor_filter)==-7.0, 1.0, 0)
         if np.sum(pruned_edge) == sum_edge:
             break
+        elif time.time() - start > 30:
+            raise TimeoutError('Pruning error')
     return pruned_edge
 
 
