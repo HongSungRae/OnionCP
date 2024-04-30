@@ -31,7 +31,6 @@ def onion_cp(img_source, img_target, mask_source, mask_target, dataset):
     assert isinstance(img_target, np.ndarray)
     assert isinstance(mask_source, np.ndarray)
     assert isinstance(mask_target, np.ndarray)
-    assert dataset in ['glas2015', 'cpm17', 'crag', 'kumar']
 
     # 0. init
     imsize = img_target.shape[1]
@@ -40,10 +39,7 @@ def onion_cp(img_source, img_target, mask_source, mask_target, dataset):
     edges_source, onions_source = onion_peeling(mask_source.astype(np.uint8), prune_all=False)
     edges_target, onions_target = onion_peeling(mask_target.astype(np.uint8), prune_all=False)
     return_mask = onions_target[0]
-    if dataset in ['kumar']: # kumar and cpm17 are too chbby
-        edges_source, onions_source = edges_source[1:], onions_source[1:]
-        edges_target, onions_target = edges_target[1:], onions_target[1:]
-    elif dataset in ['cpm17']:
+    if dataset in ['kumar', 'cpm17']: # kumar and cpm17 are too chbby
         edges_source, onions_source = edges_source[1:], onions_source[1:]
         edges_target, onions_target = edges_target[1:], onions_target[1:]
 

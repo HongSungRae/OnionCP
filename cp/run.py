@@ -54,30 +54,32 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
     dataset_path = misc.open_yaml(fr'{path}/configuration.yaml')[dataset]
 
     # synthesize new samples
-    count = 2122
+    count = 1
     inception = None
     fid = None
+
+    # image_list
+    if dataset == 'glas2015':
+        image_list = [item for item in os.listdir(fr'{dataset_path}') if "train" in item and "anno" not in item]
+    elif dataset in ['kumar', 'cpm17']:
+        image_list = os.listdir(fr'{dataset_path}/train/Images')
+    elif dataset == 'monuseg':
+        image_list = os.listdir(fr'{dataset_path}/train/Tissue Images')
+
     with tqdm(total=n_samples) as pbar:
         while count < n_samples+1:
             if dataset in ['glas2015']:
                 # load image and mask
-                image_list = [item for item in os.listdir(fr'{dataset_path}') if "train" in item and "anno" not in item]
                 if self_mix:
                     source_image_name = random.sample(image_list, 1)[0]
                     target_image_name = source_image_name
                 else:
                     source_image_name, target_image_name = random.sample(image_list, 2)
-                source_image = cv2.imread(fr'{dataset_path}/{source_image_name}', cv2.IMREAD_COLOR)
-                source_mask = cv2.imread(fr'{dataset_path}/{source_image_name[0:-4] + "_anno.bmp"}', cv2.IMREAD_GRAYSCALE)
-                target_image = cv2.imread(fr'{dataset_path}/{target_image_name}', cv2.IMREAD_COLOR)
-                target_mask = cv2.imread(fr'{dataset_path}/{target_image_name[0:-4] + "_anno.bmp"}', cv2.IMREAD_GRAYSCALE)
+                source_image = cv2.imdecode(np.fromfile(fr'{dataset_path}/{source_image_name}', np.uint8), cv2.IMREAD_COLOR)
+                source_mask = cv2.imdecode(np.fromfile(fr'{dataset_path}/{source_image_name[0:-4] + "_anno.bmp"}', np.uint8), cv2.IMREAD_GRAYSCALE)
+                target_image = cv2.imdecode(np.fromfile(fr'{dataset_path}/{target_image_name}', np.uint8), cv2.IMREAD_COLOR)
+                target_mask = cv2.imdecode(np.fromfile(fr'{dataset_path}/{target_image_name[0:-4] + "_anno.bmp"}', np.uint8), cv2.IMREAD_GRAYSCALE)
             else:
-                # load image and mask
-                if dataset in ['kumar', 'cpm17']:
-                    image_list = os.listdir(fr'{dataset_path}/train/Images')
-                else:
-                    image_list = os.listdir(fr'{dataset_path}/train/Tissue Images')
-
                 if self_mix:
                     source_image_name = random.sample(image_list, 1)[0]
                     target_image_name = source_image_name
@@ -90,8 +92,8 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
                     source_mask = io.loadmat(fr'{dataset_path}/train/Labels/{source_image_name.split(".")[0]}.mat')['inst_map']
                     target_mask = io.loadmat(fr'{dataset_path}/train/Labels/{target_image_name.split(".")[0]}.mat')['inst_map']
                 elif dataset == 'cpm17':
-                    source_image = cv2.imread(fr'{dataset_path}/train/Images/{source_image_name}', cv2.IMREAD_COLOR)
-                    target_image = cv2.imread(fr'{dataset_path}/train/Images/{target_image_name}', cv2.IMREAD_COLOR)
+                    source_image = cv2.imdecode(np.fromfile(fr'{dataset_path}/train/Images/{source_image_name}', np.uint8), cv2.IMREAD_COLOR)
+                    target_image = cv2.imdecode(np.fromfile(fr'{dataset_path}/train/Images/{target_image_name}', np.uint8), cv2.IMREAD_COLOR)
                     source_mask = io.loadmat(fr'{dataset_path}/train/Labels/{source_image_name.split(".")[0]}.mat')['inst_map']
                     target_mask = io.loadmat(fr'{dataset_path}/train/Labels/{target_image_name.split(".")[0]}.mat')['inst_map']
                 elif dataset == 'monuseg':
@@ -109,7 +111,7 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
                     target_image = cv2.resize(target_image, (imsize,imsize))
 
                     # select paste objects
-                    max_objs = {'kumar':60, 'cpm17':40, 'glas2015':6}[dataset]
+                    max_objs = {'kumar':60, 'cpm17':40, 'glas2015':6, 'monuseg':60}[dataset]
                     num_objects = min(random.randint(1, int((len(np.unique(source_mask))-1)/2)) * 2, max_objs)
                     selected_objects = random.sample(np.unique(source_mask).tolist()[1:], num_objects)
                     mask = np.where(cv2.resize(source_mask.astype(np.float64), (imsize,imsize))>0, 1, 0)
@@ -121,7 +123,7 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
                     area_dict = {}
                     for value in selected_objects:
                         area_dict[value] = np.sum(source_mask==value)
-                    area_dict_items = sorted(area_dict.items(), key=lambda x: x[1], reverse=False)
+                    area_dict_items = sorted(area_dict.items(), key=lambda x: x[1], reverse=True)
 
                     # check area size similarity and do CP
                     completed = False
@@ -168,16 +170,16 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
                         image, mask = tumor_cp(source_image, target_image, source_mask, target_mask)
 
                 # save
-                if dataset == 'kumar':
+                if dataset in ['kumar', 'monuseg']:
                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 mask = mask * 255
                 cv2.imwrite(fr'{path}/synthesized/{dataset}/{cp_type}/{count}.png', image)
                 cv2.imwrite(fr'{path}/synthesized/{dataset}/{cp_type}/{count}_mask.png', mask)
 
                 # metric
-                # image_torch = torch.einsum('bhwc -> bchw', torch.from_numpy(image[None,...]).to(dtype=torch.uint8))
-                # fid = metric.get_fid(None, image_torch, fid)
-                # inception = metric.get_is(image_torch, inception)
+                image_torch = torch.einsum('bhwc -> bchw', torch.from_numpy(image[None,...]).to(dtype=torch.uint8))
+                fid = metric.get_fid(None, image_torch, fid)
+                inception = metric.get_is(image_torch, inception)
             
                 # process bar
                 count += 1
@@ -185,21 +187,21 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
                 time.sleep(0.05)
             except Exception as e:
                 print(e)
-                # print(e.__traceback__.tb_lineno)
-                # print(e, num_objects, np.unique(source_mask).tolist()[1:], source_image_name)
 
     
     # metric
-    # for image_name in image_list:
-    #     if dataset == 'glas2015':
-    #         image = cv2.imread(fr'{dataset_path}/{image_name}', cv2.IMREAD_COLOR)
-    #     elif dataset == 'kumar':
-    #         image = tifffile.imread(fr'{dataset_path}/train/Images/{image_name}')
-    #     elif dataset == 'cpm17':
-    #         image = cv2.imread(fr'{dataset_path}/train/Images/{image_name}', cv2.IMREAD_COLOR)
-    #     image = cv2.resize(image, (imsize,imsize))
-    #     image_torch = torch.einsum('bhwc -> bchw', torch.from_numpy(image[None,...]).to(dtype=torch.uint8))
-    #     fid = metric.get_fid(image_torch, None, fid)
+    for image_name in image_list:
+        if dataset == 'glas2015':
+            image = cv2.imdecode(np.fromfile(fr'{dataset_path}/{image_name}', np.uint8), cv2.IMREAD_COLOR)
+        elif dataset == 'kumar':
+            image = tifffile.imread(fr'{dataset_path}/train/Images/{image_name}')
+        elif dataset == 'cpm17':
+            image = cv2.imdecode(np.fromfile(fr'{dataset_path}/train/Images/{image_name}', np.uint8), cv2.IMREAD_COLOR)
+        elif dataset == 'monuseg':
+            image = tifffile.imread(fr'{dataset_path}/train/Tissue Images/{image_name}')
+        image = cv2.resize(image, (imsize,imsize))
+        image_torch = torch.einsum('bhwc -> bchw', torch.from_numpy(image[None,...]).to(dtype=torch.uint8))
+        fid = metric.get_fid(image_torch, None, fid)
 
     # save configuration
     configuration = {'cp_type':cp_type, 'n_samples':n_samples, 'dataset':dataset, 'imsize':imsize, 'self_mix':self_mix, 'fid':fid.compute().item(), 'is':inception.compute()[0].item()}
@@ -209,24 +211,23 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
     
 
 if __name__ == '__main__':
-    # run(cp_type='cp', n_samples=5000, imsize=512, dataset='kumar')
+    run(cp_type='cp', n_samples=5000, imsize=512, dataset='kumar')
     # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='kumar')
     # run(cp_type='inpaintingCP', n_samples=5000, imsize=512, dataset='kumar')
     # run(cp_type='tumorCP', n_samples=5000, imsize=512, dataset='kumar')
-    # print('kumar')
     # run(cp_type='onionCP', n_samples=5000, imsize=512, dataset='kumar')
 
     # run(cp_type='cp', n_samples=5000, imsize=512, dataset='cpm17')
     # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='cpm17')
     # run(cp_type='inpaintingCP', n_samples=5000, imsize=512, dataset='cpm17')
     # run(cp_type='tumorCP', n_samples=5000, imsize=512, dataset='cpm17')
-    run(cp_type='onionCP', n_samples=5000, imsize=512, dataset='cpm17')
+    # run(cp_type='onionCP', n_samples=5000, imsize=512, dataset='cpm17')
 
     # run(cp_type='cp', n_samples=5000, imsize=512, dataset='monuseg')
     # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='monuseg')
     # run(cp_type='inpaintingCP', n_samples=5000, imsize=512, dataset='monuseg')
     # run(cp_type='tumorCP', n_samples=5000, imsize=512, dataset='monuseg')
-    # run(cp_type='onionCP', n_samples=50, imsize=256, dataset='monuseg')
+    # run(cp_type='onionCP', n_samples=50, imsize=512, dataset='monuseg')
 
     # run(cp_type='cp', n_samples=5000, imsize=512, dataset='glas2015')
     # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='glas2015')
