@@ -1,3 +1,3 @@
-from utils import metric, misc, args
+from utils import metric, misc, args, monuseg
 
-__all__ = ['metric', 'misc', 'args']
+__all__ = ['metric', 'misc', 'args', 'monuseg']

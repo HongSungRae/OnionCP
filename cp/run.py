@@ -16,7 +16,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 path = os.path.abspath(os.path.join(current_dir, ".."))
 sys.path.append(path)
 
-from utils import misc, metric
+from utils import misc, metric, monuseg
 from cp import cp
 from cpSimple import cp_simple
 from inpaintingCP import inpainting_cp
@@ -39,11 +39,11 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
     # assertion
     assert cp_type in ['cp', 'cpSimple', 'inpaintingCP', 'tumorCP', 'onionCP']
     assert n_samples >= 1
-    assert dataset in ['glas2015', 'kumar', 'cpm17', 'crag']
+    assert dataset in ['glas2015', 'kumar', 'cpm17', 'monuseg']
     assert (imsize >= 256) and (imsize%(2**4) == 0)
     if cp_type == 'onionCP':
         self_mix = True
-    misc.seed_everything(701870)
+    misc.seed_everything(10)
 
     # make save path
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -54,12 +54,12 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
     dataset_path = misc.open_yaml(fr'{path}/configuration.yaml')[dataset]
 
     # synthesize new samples
-    count = 1525
+    count = 2122
     inception = None
     fid = None
     with tqdm(total=n_samples) as pbar:
         while count < n_samples+1:
-            if dataset in ['glas2015', 'crag']:
+            if dataset in ['glas2015']:
                 # load image and mask
                 image_list = [item for item in os.listdir(fr'{dataset_path}') if "train" in item and "anno" not in item]
                 if self_mix:
@@ -73,7 +73,11 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
                 target_mask = cv2.imread(fr'{dataset_path}/{target_image_name[0:-4] + "_anno.bmp"}', cv2.IMREAD_GRAYSCALE)
             else:
                 # load image and mask
-                image_list = os.listdir(fr'{dataset_path}/train/Images')
+                if dataset in ['kumar', 'cpm17']:
+                    image_list = os.listdir(fr'{dataset_path}/train/Images')
+                else:
+                    image_list = os.listdir(fr'{dataset_path}/train/Tissue Images')
+
                 if self_mix:
                     source_image_name = random.sample(image_list, 1)[0]
                     target_image_name = source_image_name
@@ -83,12 +87,21 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
                 if dataset == 'kumar':
                     source_image = tifffile.imread(fr'{dataset_path}/train/Images/{source_image_name}')
                     target_image = tifffile.imread(fr'{dataset_path}/train/Images/{target_image_name}')
+                    source_mask = io.loadmat(fr'{dataset_path}/train/Labels/{source_image_name.split(".")[0]}.mat')['inst_map']
+                    target_mask = io.loadmat(fr'{dataset_path}/train/Labels/{target_image_name.split(".")[0]}.mat')['inst_map']
                 elif dataset == 'cpm17':
                     source_image = cv2.imread(fr'{dataset_path}/train/Images/{source_image_name}', cv2.IMREAD_COLOR)
                     target_image = cv2.imread(fr'{dataset_path}/train/Images/{target_image_name}', cv2.IMREAD_COLOR)
-                source_mask = io.loadmat(fr'{dataset_path}/train/Labels/{source_image_name.split(".")[0]}.mat')['inst_map']
-                target_mask = io.loadmat(fr'{dataset_path}/train/Labels/{target_image_name.split(".")[0]}.mat')['inst_map']
+                    source_mask = io.loadmat(fr'{dataset_path}/train/Labels/{source_image_name.split(".")[0]}.mat')['inst_map']
+                    target_mask = io.loadmat(fr'{dataset_path}/train/Labels/{target_image_name.split(".")[0]}.mat')['inst_map']
+                elif dataset == 'monuseg':
+                    source_image = tifffile.imread(fr'{dataset_path}/train/Tissue Images/{source_image_name}')
+                    target_image = tifffile.imread(fr'{dataset_path}/train/Tissue Images/{target_image_name}')
+                    source_mask = monuseg.load_mask(fr'{dataset_path}/train/Annotations', source_image_name.split(".")[0], source_image.shape)
+                    target_mask = monuseg.load_mask(fr'{dataset_path}/train/Annotations', target_image_name.split(".")[0], target_image.shape)
+                
 
+                # try CP
             try:
                 if cp_type == 'onionCP':
                     # resize image only
@@ -196,12 +209,6 @@ def run(cp_type=None, n_samples:int=10, dataset:str='', imsize:int=512, self_mix
     
 
 if __name__ == '__main__':
-    # run(cp_type='cp', n_samples=5000, imsize=512, dataset='glas2015')
-    # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='glas2015')
-    # run(cp_type='inpaintingCP', n_samples=5000, imsize=512, dataset='glas2015')
-    # run(cp_type='tumorCP', n_samples=5000, imsize=512, dataset='glas2015')
-    # run(cp_type='onionCP', n_samples=50, imsize=256, dataset='glas2015')
-
     # run(cp_type='cp', n_samples=5000, imsize=512, dataset='kumar')
     # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='kumar')
     # run(cp_type='inpaintingCP', n_samples=5000, imsize=512, dataset='kumar')
@@ -214,3 +221,15 @@ if __name__ == '__main__':
     # run(cp_type='inpaintingCP', n_samples=5000, imsize=512, dataset='cpm17')
     # run(cp_type='tumorCP', n_samples=5000, imsize=512, dataset='cpm17')
     run(cp_type='onionCP', n_samples=5000, imsize=512, dataset='cpm17')
+
+    # run(cp_type='cp', n_samples=5000, imsize=512, dataset='monuseg')
+    # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='monuseg')
+    # run(cp_type='inpaintingCP', n_samples=5000, imsize=512, dataset='monuseg')
+    # run(cp_type='tumorCP', n_samples=5000, imsize=512, dataset='monuseg')
+    # run(cp_type='onionCP', n_samples=50, imsize=256, dataset='monuseg')
+
+    # run(cp_type='cp', n_samples=5000, imsize=512, dataset='glas2015')
+    # run(cp_type='cpSimple', n_samples=5000, imsize=512, dataset='glas2015')
+    # run(cp_type='inpaintingCP', n_samples=5000, imsize=512, dataset='glas2015')
+    # run(cp_type='tumorCP', n_samples=5000, imsize=512, dataset='glas2015')
+    # run(cp_type='onionCP', n_samples=50, imsize=256, dataset='glas2015')
