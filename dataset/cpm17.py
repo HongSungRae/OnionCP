@@ -45,11 +45,11 @@ class CPM17(Dataset):
         return len(self.data_list)
 
     def __getitem__(self, idx):
-        likeli_gen = random.random() if self.split == 'train' else -1
-        likeli_conve = random.random() if self.split == 'train' else -1
+        likeli_gen = random.random() if self.split == 'train' else 99
+        likeli_conve = random.random() if self.split == 'train' else 99
 
         # Load original or sythesized images
-        if self.gen_augmentation is not None and likeli_gen >= self.p[0]:
+        if self.gen_augmentation is not None and likeli_gen <= self.p[0]:
             i = random.randint(1,5000)
             image = cv2.imread(fr'{self.parents_path}/synthesized/cpm17/{self.gen_augmentation}/{i}.png', cv2.IMREAD_COLOR)
             mask = cv2.imread(fr'{self.parents_path}/synthesized/cpm17/{self.gen_augmentation}/{i}_mask.png', cv2.IMREAD_GRAYSCALE)
@@ -62,7 +62,7 @@ class CPM17(Dataset):
         mask = np.where(cv2.resize(mask.astype(np.uint8), (self.imsize, self.imsize))>0, 1, 0)
 
         # conventional augmentations
-        if self.conven_augmentation and likeli_conve >= self.p[1]:
+        if self.conven_augmentation and likeli_conve <= self.p[1]:
             augmented = self.aug(image=image, mask=mask)
             image, mask = augmented['image'], augmented['mask']
 

@@ -1,118 +1,84 @@
-import torch
-from torch.utils.data import DataLoader, Dataset
-import numpy as np
-import pandas as pd
 import cv2
 import random
+from scipy import io
+import os
+import numpy as np
+from torch.utils.data import Dataset
+import albumentations as A
 
 
 
-
+# Segmentation Dataset for GlaS2015
 class GlaS2015(Dataset):
-    def __init__(self, path=None, original:bool=True, split='train', exp_name_cp=None, exp_name_gan=None, imsize=512, for_segmentation=False):
-        assert split in ['train', 'test']
-        self.split = split
-        self.path = path
-        self.exp_name_cp = exp_name_cp
-        self.exp_name_gan = exp_name_gan
-        self.imsize = int(imsize)
-        self.for_segmentation = for_segmentation
-        self.df = self.get_sample_info(original)
-        
-    
-    def get_sample_info(self, original):
-        image_list = []
-        mask_list = []
-        grade_list = []
-        if original:
-            annotation = pd.read_csv(fr'{self.path}/data/Warwick QU Dataset (Released 2016_07_08)/Grade.csv')
-            annotation = annotation[['name', ' grade (GlaS)']]
-            for idx, row in annotation.iterrows():
-                name = row['name']
-                grade = {' benign':0, ' malignant':1}[row[' grade (GlaS)']]
-                if self.split not in name:
-                    continue
-                image_list.append(f'Warwick QU Dataset (Released 2016_07_08)/{name}.bmp')
-                mask_list.append(f'Warwick QU Dataset (Released 2016_07_08)/{name}_anno.bmp')
-                grade_list.append(grade)
-        if self.exp_name_cp is not None:
-            annotation = pd.read_csv(fr'{self.path}/data/bank/cp/{self.exp_name_cp}/annotation.csv')
-            split_idx = int(0.8*len(annotation))
-            annotation = annotation[0:split_idx] if self.split=='train' else annotation[split_idx:]
-            annotation.reset_index()
-            for idx, row in annotation.iterrows():
-                name = row['name']
-                grade = row['grade']
-                image_list.append(f'bank/cp/{self.exp_name_cp}/{name}')
-                mask_list.append(f'bank/cp/{self.exp_name_cp}/{name.rstrip(".png")+"_mask.png"}')
-                grade_list.append(grade)
-        if self.exp_name_gan is not None:
-            annotation = pd.read_csv(fr'{self.path}/data/bank/gan/{self.exp_name_gan}/samples/annotation.csv')
-            split_idx = int(0.8*len(annotation))
-            annotation = annotation[0:split_idx] if self.split=='train' else annotation[split_idx:]
-            annotation.reset_index()
-            for idx, row in annotation.iterrows():
-                name = row['name']
-                grade = row['grade']
-                image_list.append(f'bank/gan/{self.exp_name_gan}/samples/{name}')
-                mask_list.append(f'bank/gan/{self.exp_name_gan}/samples/{name.rstrip(".png")+"_mask.png"}')
-                grade_list.append(grade)
-        
-        df = pd.DataFrame(data={'image':image_list, 'mask':mask_list, 'grade':grade_list})
-        
-        # return
-        return df
+    def __init__(self, dataset_path=None, imsize=512, split=None, gen_augmentation=None, conven_augmentation=False, p=(0.5,0.5)):
+        assert isinstance(imsize, int), 'Type Error'
+        assert split in ['train', 'test'], 'Split Error'
+        assert gen_augmentation in [None, 'cp', 'cpSimple', 'inpaintingCP', 'tumorCP', 'onionCP', 'gan', 'ddpm'], 'Generative augmentation Error'
+        assert os.path.exists(dataset_path), "Dataset path Error."
+        assert len(p) == 2
 
+        self.dataset_path = dataset_path
+        self.imsize = imsize
+        self.split = split
+        self.gen_augmentation = gen_augmentation
+        self.conven_augmentation = conven_augmentation
+        self.p = p
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.parents_path = os.path.abspath(os.path.join(current_dir, ".."))
+
+        
+        data_list = os.listdir(fr'{dataset_path}')
+        self.data_list = [x for x in data_list if split in x and 'anno' not in x]
+
+
+        if conven_augmentation:
+            self.aug = A.Compose([A.Rotate(limit=(-30,30),p=0.2),
+                                  A.RandomScale(scale_limit=(0.7,1.4),p=0.2),
+                                  A.GaussNoise(p=0.15),
+                                  A.GaussianBlur(p=0.2),
+                                  A.RandomBrightnessContrast(p=0.15),
+                                  A.RandomGamma(p=0.15),
+                                  A.HorizontalFlip(),
+                                  A.VerticalFlip(),
+                                  A.Resize(imsize,imsize)])
 
     def __len__(self):
-        return len(self.df)
-
+        return len(self.data_list)
 
     def __getitem__(self, idx):
-        # locations and grade info
-        row = self.df.loc[idx]
-        image_path, mask_path, grade = row['image'], row['mask'], row['grade']
+        likeli_gen = random.random() if self.split == 'train' else 99
+        likeli_conve = random.random() if self.split == 'train' else 99
 
-        # load image, mask
-        image = cv2.imread(fr'{self.path}/data/{image_path}', cv2.IMREAD_COLOR) # (h,w,3)
-        mask = cv2.imread(fr'{self.path}/data/{mask_path}', cv2.IMREAD_GRAYSCALE) # (h,w)
-
+        # Load original or sythesized images
+        if self.gen_augmentation is not None and likeli_gen <= self.p[0]:
+            i = random.randint(1,5000)
+            image = cv2.imread(fr'{self.parents_path}/synthesized/glas2015/{self.gen_augmentation}/{i}.png', cv2.IMREAD_COLOR)
+            mask = cv2.imread(fr'{self.parents_path}/synthesized/glas2015/{self.gen_augmentation}/{i}_mask.png', cv2.IMREAD_GRAYSCALE)
+        else:
+            image = cv2.imdecode(np.fromfile(fr'{self.dataset_path}/{self.data_list[idx]}', np.uint8), cv2.IMREAD_COLOR)
+            mask = cv2.imdecode(np.fromfile(fr'{self.dataset_path}/{self.data_list[idx].split(".")[0]}_anno.bmp', np.uint8), cv2.IMREAD_GRAYSCALE)
+           
         # resize
         image = cv2.resize(image, (self.imsize, self.imsize))
-        mask = cv2.resize(mask, (self.imsize, self.imsize))
+        mask = np.where(cv2.resize(mask.astype(np.uint8), (self.imsize, self.imsize))>0, 1, 0)
 
-        # mask reduction
-        mask = np.where(mask>=0.5, 1.0, 0)
+        # conventional augmentations
+        if self.conven_augmentation and likeli_conve <= self.p[1]:
+            augmented = self.aug(image=image, mask=mask)
+            image, mask = augmented['image'], augmented['mask']
 
-        # mask expand
-        mask = mask[None,...] # (1, h, 2)
-        if self.for_segmentation:
-            mask = np.stack([np.ones_like(mask)-mask, mask], axis=-1) # (2, h , w)
+        return  np.einsum('...c -> c...', image)/255, mask
 
-        # reshape to make channel-first-image
-        image = np.einsum('...c->c...', image)
 
-        # normalize
-        image = image/255
-        image = (image-0.5)/0.5
 
-        # type
-        image = torch.from_numpy(image).type(torch.FloatTensor)
-        mask = torch.from_numpy(mask).type(torch.FloatTensor)
-        grade = torch.tensor(grade).type(torch.LongTensor)
 
-        # return
-        return image, mask, grade
 
 
 
 if __name__ == '__main__':
-    path = 'E:\sungrae\CaPAGAN'
-    dataset = GlaS2015(path, True, 'test', 2, None, 512)
-    dataloader = DataLoader(dataset, 8, shuffle=True)
-    image, mask, grade = next(iter(dataloader))
-
-    print(f'dataloader : {len(dataloader)}')
-    print(f'image : {image.shape}, {type(image)}, [{torch.min(image).item()}, {torch.max(image).item()}]') # (b,3,imsize,imsize)
-    print(f'mask : {mask.shape}, {type(mask)}, [{torch.min(mask).item()}, {torch.max(mask).item()}]') # (b,1,imsize,imsize)
-    print(f'grade : {grade.shape}, {type(grade)}') # (b,1)
+    from torch.utils.data import DataLoader
+    
+    dataset = GlaS2015(fr'E:/Warwick QU Dataset (Released 2016_07_08)', 512, split='train', gen_augmentation='tumorCP', conven_augmentation=True)
+    dataloader = DataLoader(dataset, 8, True)
+    image, mask = next(iter(dataloader))
+    print(f'Image : {image.shape}, Mask : {mask.shape}')
