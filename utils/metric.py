@@ -10,7 +10,10 @@ import re
 from tqdm import tqdm
 
 # local
-from utils import misc
+try:
+    from utils import misc
+except:
+    import misc
 '''
 and : (1 1) -> 1, 0 otherwise
 xor : (0 1) (1 0) -> 1, 0 otherwise
@@ -57,7 +60,7 @@ def func_get_fid_is(dataset, generate, imsize=512):
     retruns nothing
     but prints IS and FID
     '''
-    assert dataset in []
+    assert dataset in ['glas2015', 'kumar', 'cpm17', 'monuseg']
     assert generate in ['cp', 'cpSimple', 'inpaintingCP', 'onionCP', 'tumorCP', 'ddpm', 'gan']
     # init
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -85,7 +88,7 @@ def func_get_fid_is(dataset, generate, imsize=512):
         inception = get_is(image_torch, inception)
 
     # FID metric : Real images
-    for image_name in real_image_list:
+    for image_name in tqdm(real_image_list, desc=' Real image...'):
         if dataset == 'glas2015':
             image = cv2.imdecode(np.fromfile(fr'{dataset_path}/{image_name}', np.uint8), cv2.IMREAD_COLOR)
         elif dataset == 'kumar':
@@ -99,7 +102,7 @@ def func_get_fid_is(dataset, generate, imsize=512):
         fid = get_fid(image_torch, None, fid)
 
     # print
-    print(f'{dataset}({generate}) : FID({fid.compute().item()}), IS({inception.compute().item()})')
+    print(f'{dataset}({generate}) : FID({fid.compute().item()}), IS({inception.compute()})')
 
 
 
@@ -260,5 +263,4 @@ def get_aji(pred, target):
 
 
 if __name__ == '__main__':
-    imgs_dist1 = torch.randint(0, 200, (100, 3, 299, 299), dtype=torch.uint8)
-    print(imgs_dist1.shape)
+    func_get_fid_is('cpm17', 'onionCP')

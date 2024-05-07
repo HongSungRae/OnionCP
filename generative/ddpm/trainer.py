@@ -13,9 +13,11 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from einops import rearrange
 
-from module.dataset import get_dataset
-from module.models import get_model
-from module.utils import Config, seed_everything, noise_scheduler, get_context
+from dataset import *
+from .models import get_model
+from .utils import Config, seed_everything, noise_scheduler, get_context, get_dataset
+
+from dataset import cpm17, monuseg2018, kumar, glas2015
 
 class Trainer:
     def __init__(self, config: Config):
@@ -60,12 +62,9 @@ class Trainer:
             ])
 
             train_dataset = get_dataset(
-                "custom",
-                imgs=train_imgs,
-                labels=train_labels,
+                dataset=self.config.dataset,
                 alpha_bar=self.alpha_bar,
-                T=self.config.T,
-                transforms=train_transform,
+                T=self.config.T
             )
 
             self.train_dataloader = DataLoader(

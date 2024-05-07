@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 
+from dataset import monuseg2018, cpm17, kumar, glas2015
+from utils import misc
 
 class Config:
     def __init__(self, args):
@@ -81,6 +83,16 @@ def noise_scheduler(beta_1, beta_T, T):
     alpha_bar = torch.exp(torch.cumsum(torch.log(alpha), axis=0))
     return beta, alpha, alpha_bar
 
+
+def get_dataset(dataset, imsize, alpha_bar, T):
+    if dataset == 'monuseg':
+        return monuseg2018.MoNuSeg2018(imsize=imsize, diffusion=True, alpha_bar=alpha_bar, T=T)
+    elif dataset == 'kumar':
+        return kumar.Kumar(imsize=imsize, diffusion=True, alpha_bar=alpha_bar, T=T)
+    elif dataset == 'cpm17':
+        return cpm17.CPM17(imsize=imsize, diffusion=True, alpha_bar=alpha_bar, T=T)
+    elif dataset == 'glas2015':
+        return glas2015.GlaS2015(imsize=imsize, diffusion=True, alpha_bar=alpha_bar, T=T)
 
 def get_context(label: str, num: int):
     # you can mixing label like [0, 0, 0, 0.5, 0.5]

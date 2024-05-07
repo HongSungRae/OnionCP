@@ -2,15 +2,20 @@ import cv2
 import random
 from scipy import io
 import os
+import sys
 import numpy as np
 from torch.utils.data import Dataset
 import albumentations as A
+from albumentations.pytorch.transforms import ToTensorV2
+import torch
 
-
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(current_dir, "..")))
+from dataset import dataset_path
 
 # Segmentation Dataset for CPM17
 class CPM17(Dataset):
-    def __init__(self, dataset_path=None, imsize=512, split=None, gen_augmentation=None, conven_augmentation=False, p=(0.5,0.5)):
+    def __init__(self, dataset_path=dataset_path['cpm17'], imsize=512, split='train', gen_augmentation=None, conven_augmentation=False, p=(0.5,0.5), diffusion=False, alpha_bar=None, T=None):
         assert isinstance(imsize, int), 'Type Error'
         assert split in ['train', 'test'], 'Split Error'
         assert gen_augmentation in [None, 'cp', 'cpSimple', 'inpaintingCP', 'tumorCP', 'onionCP', 'gan', 'ddpm'], 'Generative augmentation Error'
@@ -23,12 +28,16 @@ class CPM17(Dataset):
         self.gen_augmentation = gen_augmentation
         self.conven_augmentation = conven_augmentation
         self.p = p
+        self.diffusion = diffusion
+        self.alpha_bar = alpha_bar
+        self.T = T
         current_dir = os.path.dirname(os.path.abspath(__file__))
         self.parents_path = os.path.abspath(os.path.join(current_dir, ".."))
 
-        
         self.data_list = os.listdir(fr'{dataset_path}/{split}/Images')
-        
+
+        self.transform = A.Compose([A.Normalize(),
+                                    ToTensorV2()])
 
         if conven_augmentation:
             self.aug = A.Compose([A.Rotate(limit=(-30,30),p=0.2),
@@ -39,7 +48,8 @@ class CPM17(Dataset):
                                   A.RandomGamma(p=0.15),
                                   A.HorizontalFlip(),
                                   A.VerticalFlip(),
-                                  A.Resize(imsize,imsize)])
+                                  A.Resize(imsize,imsize)
+                                  ])
 
     def __len__(self):
         return len(self.data_list)
@@ -66,7 +76,18 @@ class CPM17(Dataset):
             augmented = self.aug(image=image, mask=mask)
             image, mask = augmented['image'], augmented['mask']
 
-        return  np.einsum('...c -> c...', image)/255, mask
+        # normalize and ToTensor
+        augmented = self.transform(image=image)
+        image = augmented['image']
+
+        # diffusion data?
+        if self.diffusion:
+            t = np.random.randint(1, self.T+1)
+            eps = torch.randn_like(image)
+            x_t = torch.sqrt(self.alpha_bar[t]) * image + torch.sqrt(1 - self.alpha_bar[t]) * eps
+            return {"img": image, "x_t": x_t, "t": t, "eps": eps}
+        else:
+            return  image, torch.from_numpy(mask).to(torch.float64)
 
 
 
